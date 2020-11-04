@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final int CHOOSE_IMAGE = 0x01;
     private static final int CROP_IMAGE = 0x02;
+    private static final int OPEN_CAMERA = 0x04;
 
     @BindView(R.id.photo_iv)
     ImageView mPhotoIv;
@@ -40,7 +41,8 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean mIsNeedCrop;
     private String mPhotoPath;
-    private Uri mSavePathUri;
+    private Uri mSaveCropUri;
+    private File mSaveCameraFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,15 +52,15 @@ public class MainActivity extends AppCompatActivity {
         requestPermissions();
 
         // 裁剪之后保存的原文件路径
-        mSavePathUri = Uri.fromFile(new File(getExternalFilesDir("crop"), "crop_save.jpg"));
-        Log.i(TAG, "SavePathUri -> " + mSavePathUri.toString());
+        mSaveCropUri = Uri.fromFile(new File(getExternalFilesDir("crop"), "crop_save.jpg"));
+        Log.i(TAG, "SavePathUri -> " + mSaveCropUri.toString());
     }
 
     @SuppressLint("CheckResult")
     private void requestPermissions() {
         RxPermissions rxPermissions = new RxPermissions(this);
         Disposable disposable = rxPermissions
-                .request(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE)
+                .request(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.CAMERA)
                 .subscribe(accept -> {
                     if (accept) {
                         toast("accept");
@@ -81,6 +83,29 @@ public class MainActivity extends AppCompatActivity {
 
     public void clickBtn2(View view) {
         skipPhotoCrop();
+    }
+
+    public void clickBtn3(View view) {
+        skipCamera();
+    }
+
+    public void clickBtn4(View view) {
+//        showPhotoImg("/external/Android/data/com.blood.cameraphotoviewer/files/photo/1604402572264.jpg");
+//        showPhotoImg("/storage/emulated/0/Android/data/com.blood.cameraphotoviewer/files/photo/1604402572264.jpg");
+        File file = new File(getExternalFilesDir("photo"), "1604402572264.jpg");
+        Log.i(TAG, "test -> " + file.getAbsolutePath());
+    }
+
+    private void skipCamera() {
+        mSaveCameraFile = new File(getExternalFilesDir("photo"), System.currentTimeMillis() + ".jpg");
+        Uri saveCameraUri = PhotoUtils.fromFile(this, mSaveCameraFile);
+        mPhotoPath = mSaveCameraFile.getAbsolutePath();
+        Log.i(TAG, "SaveCameraUri -> " + saveCameraUri.toString());
+
+        //启动相机的对应Activity
+        Intent intent = new Intent("android.media.action.IMAGE_CAPTURE");
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, saveCameraUri);
+        startActivityForResult(intent, OPEN_CAMERA);
     }
 
     private void skipPhotoAlbum() {
@@ -110,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra("outputY", 600);//输出图片的高度
         intent.putExtra("scale", false);//缩放
         intent.putExtra("return-data", true);//当为true的时候就返回缩略图，false就不返回，需要通过Uri
-        intent.putExtra(MediaStore.EXTRA_OUTPUT, mSavePathUri);//设置大图保存到文件
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, mSaveCropUri);//设置大图保存到文件
         intent.putExtra("outputFormat", Bitmap.CompressFormat.JPEG.toString());//保存的图片格式
         intent.putExtra("noFaceDetection", false);//前置摄像头
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // 必须加上权限
@@ -120,19 +145,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (data == null) {
-            mIsNeedCrop = false;
-            return;
-        }
-        Uri uri = data.getData();
         if (resultCode == RESULT_OK) {
             switch (requestCode) {
                 case CHOOSE_IMAGE:
+                    if (data == null) {
+                        mIsNeedCrop = false;
+                        return;
+                    }
+                    Uri uri = data.getData();
                     String photoPath = PhotoUtils.getPhotoPath(this, uri);
                     showPhotoImg(photoPath);
 
                     if (mIsNeedCrop) {
                         skipPhotoCrop();
+                        mIsNeedCrop = false;
                     }
 
                     break;
@@ -145,12 +171,15 @@ public class MainActivity extends AppCompatActivity {
                         break;
                     }
                     // 保存原图
-                    Bitmap bitmap = BitmapFactory.decodeFile(mSavePathUri.getPath());
+                    Bitmap bitmap = BitmapFactory.decodeFile(mSaveCropUri.getPath());
                     if (bitmap == null) {
                         toast("bitmap is null");
                         break;
                     }
                     mCropIv.setImageBitmap(bitmap);
+                    break;
+                case OPEN_CAMERA:
+                    showPhotoImg(mSaveCameraFile.getAbsolutePath());
                     break;
             }
         }
@@ -162,7 +191,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         Log.i(TAG, "photoPath -> " + photoPath);
-        Bitmap bitmap = BitmapFactory.decodeFile(photoPath);
+//        Bitmap bitmap = BitmapFactory.decodeFile(photoPath);
+        Bitmap bitmap = PhotoUtils.amendRotatePhoto(photoPath); // 修正被旋转的图片
         if (bitmap == null) {
             toast("bitmap is null");
             return;
@@ -176,4 +206,5 @@ public class MainActivity extends AppCompatActivity {
         toast.setText(msg);
         toast.show();
     }
+
 }
